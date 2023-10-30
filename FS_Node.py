@@ -5,52 +5,53 @@ import os
 
 def main():
 
-    # remove first argument (script name)
+    # Remove first argument (script name)
 	args = sys.argv[1:] # args = main_folder serverIP Port
 
-    # open specified folder
+    # Open specified folder
 	os.chdir(args[0])
 
+	# Not implemented TCP 9090 default port
 	HOST = args[1]
 	PORT = args[2]
 	
-    #create and connect socket
+    # Open socket
 	client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	client_socket.connect((HOST, int(PORT)))
+	
+	
+	print('FS Transfer Protocol: à escuta na porta UDP 9090')
 
-	#while True:
-		# i = input("Escolha uma operação:\n\
-		# 	1 - Registar Node\n\
-		# 	2 - Pedir lista de ficherios\n\
-		# 	3 - Pedir localização de ficheiro\n\
-		# 	4 - Cancelar")
-		# match i:
-		# 	case "1":
-		# 		print("Não implementado")
+	# Interaction while
+	while True:
+		# Add 2 - Pedir lista de ficherios\n3 - Pedir localização de ficheiro\n
+		i = input("Escolha uma operação:\n1 - Registar Node\n4 - Cancelar\n")
+		if (i == '1'):
+			# Create message
+			message = "1;9090;file1.txt;file2.txt"
+			break
 
-		# 	case "2":
-		# 		print("Não implementado")
+		# elif(i == '2'):
+		# 	print("Não implementado")
 
-		# 	case "3":
-		# 		print("Não implementado")
+		# elif(i == '3'):
+		# 	print("Não implementado")
 
-		# 	case "4":
-		# 		break
+		elif(i == '4'):
+			break
 
-		# 	case _:
-		# 		print("Operação inválida!")
+		else:
+			print("Operação inválida!")
 
-    # create and send message
-	message = "1,file1.txt,file2.txt"
+    # Send message
 	client_socket.sendall(message.encode('utf-8'))
 
-    # receive and print response
+    # Receive and print response
 	data = client_socket.recv(1024)
 	print(f"Server response: {data.decode('utf-8')}")
 
-    # close socket
+    # Close socket
 	client_socket.close()
 
 if __name__ == "__main__":
 	main()
-
