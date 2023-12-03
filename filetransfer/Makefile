@@ -1,3 +1,7 @@
 fmt:
-	isort --profile black .
+	autoflake .
+	isort .
 	black .
+
+lint:
+	pylint filetransfer

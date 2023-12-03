@@ -17,7 +17,37 @@ pytest = "^7.4.3"
 [tool.poetry.group.dev.dependencies]
 black = "^23.11.0"
 isort = "^5.12.0"
+pylint = "^3.0.2"
+
+
+[tool.poetry.group.add.dependencies]
+autoflake = "^2.2.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+preview = true
+
+[tool.isort]
+py_version = 310
+profile = "black"
+
+[tool.autoflake]
+in-place = true
+recursive = true
+remove-all-unused-imports = true
+ignore-init-module-imports = true
+remove-duplicate-keys = true
+remove-unused-variables = true
+
+[tool.pylint.master]
+jobs = 4
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring"
+]
