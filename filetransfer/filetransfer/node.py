@@ -21,10 +21,6 @@ class Node:
     ):
         self.address = Address(socket.gethostbyname(socket.gethostname()), port)
         self.server_address = server_address
-        self.server_socket = socket.socket(
-            family=socket.AF_INET, type=socket.SOCK_STREAM
-        )
-        self.server_socket.connect((server_address.host, server_address.port))
         self.transfer_socket = socket.socket(
             family=socket.AF_INET, type=socket.SOCK_DGRAM
         )
@@ -48,23 +44,30 @@ class Node:
         return message
 
     def regist(self):
+        self.server_socket = socket.socket(
+            family=socket.AF_INET, type=socket.SOCK_STREAM
+        )
+        self.server_socket.connect((self.server_address.host, self.server_address.port))
         files = self.storage_path.glob("**/*")
         message = f"1;{self.address.port};" + ";".join([
             self.regist_file(file) for file in files
         ])
         self.server_socket.sendall(message.encode("utf-8"))
         data = self.server_socket.recv(BUFFER_SIZE)
-        print(f"Server response: {data.decode('utf-8')}")
         if data:
             received = data.decode("utf-8")
-            logging.info(f"Received {received}")
+            print(f"Received {received}")
     
     def get_file_info(self) -> str:
+        self.server_socket = socket.socket(
+            family=socket.AF_INET, type=socket.SOCK_STREAM
+        )
+        self.server_socket.connect((self.server_address.host, self.server_address.port))
         message = "2"
-        print(f"envia{message}")
+        print(f"Sending {message}")
         self.server_socket.sendall(message.encode("utf-8"))
-        print("enviou")
         data = self.server_socket.recv(BUFFER_SIZE)
-        print(data.decode("utf-8"))
+        print(f"sent and received: {data.decode('utf-8')}")
         if data:
-            logging.info(data.decode("utf-8"))
+            received = data.decode("utf-8")
+            print(f"Received {received}")

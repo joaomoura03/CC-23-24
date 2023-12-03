@@ -21,19 +21,19 @@ def main():
         server_address=Address(args.server_host, args.server_port),
     )
 
-    # node.regist()
-
-    choice = input("Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros\
-			\n3 - Ask file\n4 - Fechar\n")
-
-    if choice == '1':
-        node.regist()
-    
-    elif choice == '2':
-        node.get_file_info()
-    
-    elif choice == '4':
-        node.close()
+    #node.regist()
+    while True:
+        choice = input("Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros\
+                \n3 - Ask file\n4 - Fechar\n")
+        if choice == '1':
+            node.regist()
+        
+        elif choice == '2':
+            node.get_file_info()
+        
+        elif choice == '4':
+            node.close()
+            break
 
 if __name__ == "__main__":
     main()

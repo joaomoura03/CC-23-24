@@ -6,6 +6,7 @@ from threading import Lock
 
 from filetransfer.utils import File, FileCatalog, FileName, FileNode
 
+
 # HOST = '10.4.4.1'
 
 BUFFER_SIZE = 1024
@@ -28,7 +29,7 @@ class Tracker:
         self,
         *,
         host: str = "localhost",
-        port: int = 9090,
+        port: int = 9091,
         store_path: Path = get_store_path(),
         n_threads: int = 10,
     ) -> None:
@@ -48,23 +49,12 @@ class Tracker:
     def start(self):
         running = True
         while running:
+            print(f"Server is listening on {self.server_socket.getsockname()}")
             self.server_socket.listen()
             client_socket, client_address = self.server_socket.accept()
-            logging.info("Connection from %s", client_address)
-            self.thread_pool.submit(self.handle_client, client_socket, client_address)
-
-    def handle_client(self, client_socket: socket.socket, client_address: str):
-        data = client_socket.recv(BUFFER_SIZE)
-        print(f"Received {data}")
-        logging.debug("Received %s", data)
-        if data:
-            response = self.callback(
-                client_address=client_address[0],
-                data=data.decode("utf-8"),
-            )
-            print(type(response))
-            client_socket.sendall(response.encode("utf-8"))
-        client_socket.close()
+            print(f"Connection from {client_address}")
+            data = client_socket.recv(BUFFER_SIZE)
+            self.thread_pool.submit(self.handle_client, data.decode("utf-8"), client_socket, client_address)
 
     def stop(self):
         self.running = False
@@ -77,16 +67,25 @@ class Tracker:
         with open(self.store_path, mode="r", encoding="utf-8") as fp:
             self.store = FileCatalog.model_validate_json(fp.read())
 
+    def handle_client(self, data: str, client_socket: socket.socket, client_address: str):
+        logging.debug(f"Received {data}")
+        if data:
+            response = self.callback(
+                client_address=client_address[0],
+                data=data,
+            )
+            client_socket.sendall(response.encode("utf-8"))
+        client_socket.close()
+
     def callback(self, *, client_address: str, data: str) -> str:
         if data[0] == "1":
             return self.regist_node(
                 client_address=client_address, node_raw_info=data
             )
         if data[0] == "2":
-            print("data[0]==2")
             return self.list_files()
         if data[0] == "3":
-            return self.file_info(client_address=client_address, file_name=data)
+            return self.file_info(file_name=data)
         return "ERROR"
 
     def regist_node(self, *, client_address: str, node_raw_info: str) -> str:
@@ -100,17 +99,15 @@ class Tracker:
                 self.store.add_file_node(file_node=file_node, file_name=file_name)
         with self.store_lock:
             self.save()
-        print("chegou")
-        logging.info(f"Nodo {client_address} registado")
+        print(f"Nodo {client_address} registado")
         return f"OK {client_address}"
 
     def list_files(self) -> list[FileName]:
-        print("listar ficheiros")
+        logging.info("Lista de ficheiros")
         with self.store_lock:
-            print(f"lista:{self.store.list_files()}")
-            return self.store.list_files()
+            return str(self.store.list_files())
 
-    def file_info(self, *, client_address: str, file_name: FileName) -> File:
-        logging.info("Listando informação de %s para %s", file_name, client_address)
+    def file_info(self, *, file_name: FileName) -> File:
+        logging.info(f"Informação de {file_name}")
         with self.store_lock:
             return self.store[file_name]
