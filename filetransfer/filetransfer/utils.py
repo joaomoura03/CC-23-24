@@ -11,6 +11,12 @@ class Address:
     host: str
     port: int
 
+class TransferFile(BaseModel):
+    info: dict[int, Address] = {}
+
+    def add(self, *, host: str, port: str, block: int):
+        if block not in self.info:
+            self.info[block] = Address(host=host, port=port)
 
 class FileNode(BaseModel):
     host: str
@@ -45,3 +51,8 @@ class FileCatalog(BaseModel):
 
     def list_files(self) -> list[FileName]:
         return list(self.files.keys())
+    
+    def get_file_info(self, *, file_name: FileName) -> str:
+        return list(self.files[file_name].nodes.values())
+            
+        

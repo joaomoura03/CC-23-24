@@ -22,15 +22,20 @@ def main():
     )
 
     #node.regist()
+    print(f"Conexão FS Track Protocol com servidor {args.server_host} porta {args.server_port}.")
+
     while True:
         choice = input("Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros\
-                \n3 - Ask file\n4 - Fechar\n")
+                \n3;(file_name) - Descarregar Ficheiro\n4 - Fechar\n")
         if choice == '1':
             node.regist()
-        
+
         elif choice == '2':
-            node.get_file_info()
-        
+            node.get_file_list()
+
+        elif choice[0] == '3':
+            node.get_file(file_name=choice[2:])
+                  
         elif choice == '4':
             node.close()
             break

@@ -6,6 +6,8 @@ from threading import Lock
 
 from filetransfer.utils import File, FileCatalog, FileName, FileNode
 
+import json
+
 
 # HOST = '10.4.4.1'
 
@@ -29,7 +31,7 @@ class Tracker:
         self,
         *,
         host: str = "localhost",
-        port: int = 9091,
+        port: int = 9090,
         store_path: Path = get_store_path(),
         n_threads: int = 10,
     ) -> None:
@@ -47,13 +49,14 @@ class Tracker:
         self.thread_pool.shutdown(wait=True, cancel_futures=False)
 
     def start(self):
-        running = True
-        while running:
-            print(f"Server is listening on {self.server_socket.getsockname()}")
+        self.running = True
+        while self.running:
+            print(f"Servidor ativo em {self.server_socket.getsockname()}")
             self.server_socket.listen()
             client_socket, client_address = self.server_socket.accept()
             print(f"Connection from {client_address}")
             data = client_socket.recv(BUFFER_SIZE)
+            print(data)
             self.thread_pool.submit(self.handle_client, data.decode("utf-8"), client_socket, client_address)
 
     def stop(self):
@@ -74,6 +77,7 @@ class Tracker:
                 client_address=client_address[0],
                 data=data,
             )
+            print(f"Sending {response}")
             client_socket.sendall(response.encode("utf-8"))
         client_socket.close()
 
@@ -85,7 +89,7 @@ class Tracker:
         if data[0] == "2":
             return self.list_files()
         if data[0] == "3":
-            return self.file_info(file_name=data)
+            return self.file_info(file_name=data[2:])
         return "ERROR"
 
     def regist_node(self, *, client_address: str, node_raw_info: str) -> str:
@@ -102,12 +106,12 @@ class Tracker:
         print(f"Nodo {client_address} registado")
         return f"OK {client_address}"
 
-    def list_files(self) -> list[FileName]:
-        logging.info("Lista de ficheiros")
-        with self.store_lock:
+    def list_files(self) -> str:
+        print("Lista de ficheiros")
+        with self.save_lock:
             return str(self.store.list_files())
 
-    def file_info(self, *, file_name: FileName) -> File:
-        logging.info(f"Informação de {file_name}")
-        with self.store_lock:
-            return self.store[file_name]
+    def file_info(self, *, file_name: FileName) -> str:
+        print(f"Informação de {file_name}")
+        with self.save_lock:
+            return ";".join(str((file_node.host, file_node.port, str(file_node.blocks))) for file_node in self.store.get_file_info(file_name=file_name))
