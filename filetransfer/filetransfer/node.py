@@ -1,24 +1,23 @@
 import logging
 import os
-import json
 import socket
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from filetransfer.utils import TransferFile
+from filetransfer.utils import TransferFile, Address
 
-from filetransfer.utils import Address
-
-BUFFER_SIZE = 4
+BUFFER_SIZE = 1024
 BLOCK_SIZE = 16
+
+UDP_BUFFER_SIZE = 4
 
 
 class Node:
     def __init__(
         self,
         *,
-        storage_path: Path,
+        storage_folder: str,
         server_address: Address,
-        port: int = 9090,
+        port: int = 9093,
         n_threads: int = 10,
     ):
         self.address = Address(socket.gethostbyname(socket.gethostname()), port)
@@ -27,7 +26,7 @@ class Node:
             family=socket.AF_INET, type=socket.SOCK_DGRAM
         )
         self.transfer_socket.bind((self.address.host, self.address.port))
-        self.storage_path = storage_path
+        self.storage_path = Path(__file__).parents[0] / "file_system" / storage_folder
         self.thread_pool = ThreadPoolExecutor(max_workers=n_threads)
         self.running = False
 
@@ -39,37 +38,45 @@ class Node:
     def udp_start(self):
         self.running = True
         while self.running:
-            print(f"FS Transfer Protocol: à escuta na porta UDP {self.address.port}")
+            print(f"FS Transfer Protocol: à escuta UDP em {self.address}")
             data = self.transfer_socket.recvfrom(BUFFER_SIZE)
-            self.thread_pool.submit(self.handle_client, data.decode("utf-8"))
+            print(data)
+            #self.thread_pool.submit(self.udp_handler, data)
+            self.udp_handler(data)
     
     def udp_stop(self):
         self.running = False
 
     def udp_handler(self, data: str):
-        print(data)
-        file_name, block, host, port = data.split(";")
+        file_name, block = data[0].decode("utf-8").split(";")
         file_path = self.storage_path / f"{file_name}"
-        with open(file_path, mode="r") as fp:
+        with open(file_path, mode="rb") as fp:
             fp.seek(int(block) * BLOCK_SIZE)
-            response = fp.read(BLOCK_SIZE)
-        self.transfer_socket.sendto(response, (host, int(port)))
+            response = fp.read(UDP_BUFFER_SIZE)
+            limit = 0
+            while response and limit < BLOCK_SIZE:
+                limit += len(response)
+                self.transfer_socket.sendto(response, data[1])
+                response = fp.read(UDP_BUFFER_SIZE)
+        self.transfer_socket.sendto(b'', data[1])
     
     def download(self, *, file_name: str, host: str, port: int, block: int) -> None:
         client_socket = socket.socket(
             family=socket.AF_INET, type=socket.SOCK_DGRAM
         )
-        message = f"{file_name};{block};{self.address.host};{self.address.port}"
-        client_socket.sendto(message.encode("utf-8"), (host, port))
-        file_path = self.storage_path / f"{file_name}"
-        with open(file_path, mode="rb+") as fp:
-            fp.seek(block * BLOCK_SIZE)
+        message = f"{file_name};{block}"
+        print(f"Sendto {host, port} the message {message}")
+        client_socket.sendto(message.encode("utf-8"), ("127.0.1.1", port))
+        file_path = self.storage_path / f"{block};{file_name}"
+        with open(file_path, mode="wb") as fp:
             while True:
-                data = client_socket.recv(BUFFER_SIZE)
+                print("A receber ficheiro...")
+                data, address = client_socket.recvfrom(UDP_BUFFER_SIZE)
                 if not data:
                     break
                 fp.write(data)
-        client_socket.close()
+
+
 
     def regist_file(self, file_path: Path) -> str:
         message = f"{file_path.name};"
@@ -95,6 +102,10 @@ class Node:
         if data:
             received = data.decode("utf-8")
             print(f"Received {received}")
+        else:
+            print("Erro ao registar")
+        self.thread_pool.submit(self.udp_start())
+        
     
     def get_file_list(self) -> str:
         self.server_socket = socket.socket(
@@ -124,7 +135,17 @@ class Node:
             print("Ficheiro não encontrado")
 
 
+    def merge_files(self, *, file_name: str) -> None:
+        file_path = self.storage_path / f"{file_name}"
+        with open(file_path, mode="wb") as fp:
+            if fp:
+                for file in self.storage_path.glob(f"*;{file_name}"):
+                    with open(file, mode="rb") as fp2:
+                        fp.write(fp2.read())
+                    os.remove(file)
+
     def get_file(self, *, file_name: str) -> None:
+        print("A descarregar ficheiro...")
         split_data = self.get_file_info(file_name=file_name).split("'")
         tranfer_info = TransferFile()
         for i in range(1, len(split_data), 6):
@@ -134,9 +155,16 @@ class Node:
                 tranfer_info.add(host=split_data[i], port=split_data[i+2], block=block)
         print(tranfer_info)
         self.udp_stop()
-        for host, port, block in tranfer_info:
-            self.thread_pool.submit(
-                self.download, file_name=file_name, host=host, port=port, block=block
+        for block in tranfer_info.info:
+            # self.thread_pool.submit(
+            #     self.download, file_name=file_name, host=host, port=port, block=block
+            # )
+            self.download(
+                file_name=file_name,
+                host=tranfer_info[block].host,
+                port=int(tranfer_info[block].port),
+                block=block
             )
-        self.udp_start()
+        self.merge_files(file_name=file_name)
+        #self.udp_start()
     

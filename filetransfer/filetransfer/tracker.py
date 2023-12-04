@@ -4,12 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 
-from filetransfer.utils import File, FileCatalog, FileName, FileNode
-
-import json
-
-
-# HOST = '10.4.4.1'
+from filetransfer.utils import FileCatalog, FileName, FileNode
 
 BUFFER_SIZE = 1024
 
@@ -30,7 +25,7 @@ class Tracker:
     def __init__(
         self,
         *,
-        host: str = "localhost",
+        host: str = socket.gethostbyname(socket.gethostname()),
         port: int = 9090,
         store_path: Path = get_store_path(),
         n_threads: int = 10,
@@ -95,16 +90,19 @@ class Tracker:
     def regist_node(self, *, client_address: str, node_raw_info: str) -> str:
         split_data = node_raw_info.split(";")
         port = split_data[1]
-        for i in range(2, len(split_data), 2):
-            file_name = split_data[i]
-            blocks = [int(b) for b in split_data[i + 1].split(",")]
-            file_node = FileNode(host=client_address, port=port, blocks=blocks)
-            with self.save_lock:
-                self.store.add_file_node(file_node=file_node, file_name=file_name)
-        with self.store_lock:
-            self.save()
-        print(f"Nodo {client_address} registado")
-        return f"OK {client_address}"
+        splits = len(split_data)
+        if splits > 2:
+            for i in range(2, splits, 2):
+                file_name = split_data[i]
+                blocks = [int(b) for b in split_data[i + 1].split(",")]
+                file_node = FileNode(host=client_address, port=port, blocks=blocks)
+                with self.save_lock:
+                    self.store.add_file_node(file_node=file_node, file_name=file_name)
+            with self.store_lock:
+                self.save()
+            print(f"Nodo {client_address} registado")
+            return f"OK {client_address}"
+        return "No files"
 
     def list_files(self) -> str:
         print("Lista de ficheiros")

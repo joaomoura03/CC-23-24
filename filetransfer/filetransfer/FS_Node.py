@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from pathlib import Path
 
 from filetransfer.node import Node
 from filetransfer.utils import Address
@@ -13,11 +12,8 @@ def main():
     parser.add_argument("server_port", type=int, help="Server port")
     args = parser.parse_args()
 
-    storage_path = Path(__file__).parents[0] / "file_system" / args.storage_folder
-    print(args)
-
     node = Node(
-        storage_path=storage_path,
+        storage_folder=args.storage_folder,
         server_address=Address(args.server_host, args.server_port),
     )
 
@@ -28,6 +24,7 @@ def main():
         choice = input("Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros\
                 \n3;(file_name) - Descarregar Ficheiro\n4 - Fechar\n")
         if choice == '1':
+            node.udp_stop()
             node.regist()
 
         elif choice == '2':

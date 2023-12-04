@@ -12,7 +12,11 @@ class Address:
     port: int
 
 class TransferFile(BaseModel):
+    name: str = ""
     info: dict[int, Address] = {}
+
+    def __getitem__(self, block: int) -> Address:
+        return self.info[block]
 
     def add(self, *, host: str, port: str, block: int):
         if block not in self.info:
