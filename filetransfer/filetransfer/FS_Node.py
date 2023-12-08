@@ -17,25 +17,31 @@ def main():
         server_address=Address(args.server_host, args.server_port),
     )
 
-    #node.regist()
-    print(f"Conexão FS Track Protocol com servidor {args.server_host} porta {args.server_port}.")
+    node.regist()
+    print(
+        f"Conexão FS Track Protocol com servidor {args.server_host} porta"
+        f" {args.server_port}."
+    )
 
     while True:
-        choice = input("Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros\
-                \n3;(file_name) - Descarregar Ficheiro\n4 - Fechar\n")
-        if choice == '1':
+        choice = input(
+            "Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros       "
+            "         \n3;(file_name) - Descarregar Ficheiro\n4 - Fechar\n"
+        )
+        if choice == "1":
             node.udp_stop()
             node.regist()
 
-        elif choice == '2':
+        elif choice == "2":
             node.get_file_list()
 
-        elif choice[0] == '3':
+        elif choice[0] == "3":
             node.get_file(file_name=choice[2:])
-                  
-        elif choice == '4':
+
+        elif choice == "4":
             node.close()
             break
+
 
 if __name__ == "__main__":
     main()

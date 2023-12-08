@@ -1,8 +1,6 @@
 from filetransfer.tracker import get_store_path
 from filetransfer.utils import FileCatalog, FileNode
 
-from pathlib import Path
-
 
 def test_save_load(tmpdir):
     n1 = FileNode(host="12.0.3.1", port="9091", blocks=[0, 1, 2])

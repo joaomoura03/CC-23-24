@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 FileName = str
-Host = str
+Url = str
 
 
 @dataclass
@@ -11,16 +11,6 @@ class Address:
     host: str
     port: int
 
-class TransferFile(BaseModel):
-    name: str = ""
-    info: dict[int, Address] = {}
-
-    def __getitem__(self, block: int) -> Address:
-        return self.info[block]
-
-    def add(self, *, host: str, port: str, block: int):
-        if block not in self.info:
-            self.info[block] = Address(host=host, port=port)
 
 class FileNode(BaseModel):
     host: str
@@ -30,10 +20,10 @@ class FileNode(BaseModel):
 
 class File(BaseModel):
     name: str
-    nodes: dict[Host, FileNode]
+    nodes: dict[Url, FileNode]
 
     def add_node(self, *, node: FileNode) -> None:
-        self.nodes[node.host] = node
+        self.nodes[f"{node.host}:{node.port}"] = node
 
 
 class FileCatalog(BaseModel):
@@ -46,17 +36,28 @@ class FileCatalog(BaseModel):
         self.files[file.name] = file
 
     def add_file_node(self, *, file_node: FileNode, file_name: str):
-        if file_name in self.files:
-            self[file_name].add_node(node=file_node)
-        else:
-            self.files[file_name] = File(
-                name=file_name, nodes={file_node.host: file_node}
-            )
+        if file_name not in self.files:
+            self.files[file_name] = File(name=file_name, nodes={})
+        self[file_name].add_node(node=file_node)
 
     def list_files(self) -> list[FileName]:
         return list(self.files.keys())
-    
+
     def get_file_info(self, *, file_name: FileName) -> str:
         return list(self.files[file_name].nodes.values())
-            
-        
+
+
+class FilePeers(BaseModel):
+    info: dict[int, Address] = Field(default_factory=dict)
+
+    def __getitem__(self, block: int) -> Address:
+        return self.info[block]
+
+    @classmethod
+    def from_file(cls, file: File) -> "FilePeers":
+        file_peers = cls()
+        for node in file.nodes.values():
+            for block in node.blocks:
+                if block not in file_peers.info:
+                    file_peers.info[block] = Address(host=node.host, port=node.port)
+        return file_peers
