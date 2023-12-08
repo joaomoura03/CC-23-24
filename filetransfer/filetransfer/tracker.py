@@ -72,7 +72,6 @@ class Tracker:
         self, client_socket: socket.socket, client_address: str
     ):
         while data := client_socket.recv(BUFFER_SIZE).decode("utf-8"):
-            print("FR", client_address, data)
             response = self.callback(
                 client_address=client_address[0],
                 data=data,
@@ -101,14 +100,12 @@ class Tracker:
             print(n_splits)
             for i in range(2, n_splits, 2):
                 file_name = split_data[i]
-                print("FR", file_name)
                 if not split_data[i+1]:
                     continue
                 blocks = [int(b) for b in split_data[i + 1].split(",")]
                 file_node = FileNode(host=client_address, port=port, blocks=blocks)
                 with self.memory_guard:
                     self.store.add_file_node(file_node=file_node, file_name=file_name)
-                print(f"FR Ficheiro {file_name} registado")
             with self.disk_guard:
                 self.save()
             print(f"Nodo {client_address} registado")

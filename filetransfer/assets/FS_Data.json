@@ -1,1 +1,1 @@
-{"files":{"file3.txt":{"name":"file3.txt","nodes":{"127.0.0.1:9095":{"host":"127.0.0.1","port":"9095","blocks":[0]},"127.0.0.1:9093":{"host":"127.0.0.1","port":"9093","blocks":[0]}}},"file1.txt":{"name":"file1.txt","nodes":{"127.0.0.1:9093":{"host":"127.0.0.1","port":"9093","blocks":[0,1]}}},"file2.txt":{"name":"file2.txt","nodes":{"127.0.0.1:9093":{"host":"127.0.0.1","port":"9093","blocks":[0]}}}}}
+{"files":{"file1.txt":{"name":"file1.txt","nodes":{"127.0.0.1:9093":{"host":"127.0.0.1","port":"9093","blocks":[0,1]}}}}}

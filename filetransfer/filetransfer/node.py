@@ -73,7 +73,7 @@ class Node:
         client_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         message = f"{file_name};{block}"
         print(f"Sendto {host, port} the message {message}")
-        client_socket.sendto(message.encode("utf-8"), ("127.0.1.1", port))
+        client_socket.sendto(message.encode("utf-8"), (host, port)) #to run on localhost change host to 127.0.1.1
         file_path = self.storage_path / f"{block}_{file_name}"
         with open(file_path, mode="wb") as fp:
             while True:
@@ -103,11 +103,10 @@ class Node:
             received = data.decode("utf-8")
             print(f"Received {received}")
         else:
-            print("FR: ", self.server_socket.recv(BUFFER_SIZE), "||", self.server_socket.recv(BUFFER_SIZE))
             print("Erro ao registar")
         self.thread_pool.submit(self.udp_start)
 
-    def get_file_list(self) -> str:
+    def get_file_list(self) -> None:
         message = "2"
         self.server_socket.sendall(message.encode("utf-8"))
         data = self.server_socket.recv(BUFFER_SIZE)
@@ -139,8 +138,6 @@ class Node:
         if file is None:
             return
         file_peers = FilePeers.from_file(file=file)
-        print(file_peers)
-        self.udp_stop()
         for block in file_peers.info:
             # self.thread_pool.submit(
             #     self.download,
@@ -149,6 +146,7 @@ class Node:
             #     port=int(file_peers[block].port),
             #     block=block
             # )
+            #how to wait for this threads?
             self.download(
                 file_name=file_name,
                 host=file_peers[block].host,
@@ -157,4 +155,3 @@ class Node:
             )
 
         self.merge_blocks(file_name=file_name, block_ids=file_peers.info.keys())
-        self.udp_start()
