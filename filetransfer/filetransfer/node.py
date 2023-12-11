@@ -19,7 +19,7 @@ class Node:
         storage_folder: str,
         server_address: Address,
         port: int = 9093,
-        n_threads: int = 4,
+        n_threads: int = 10,
     ):
         self.address = Address(socket.gethostbyname(socket.gethostname()), port)
         self.server_address = server_address
@@ -39,7 +39,10 @@ class Node:
         self.sent_packets = SentCatalog()
         self.packet_guard = Lock()
 
-    def packet_recap(self):
+    
+
+
+    def udp_packet_check(self):
         try:
             print("FR STARTING PACKET RECAP")
             while self.running:
@@ -53,7 +56,6 @@ class Node:
                                 if len(l) > 0:
                                     packet = block.packets[l[0]]
                                     print("FR CHECKING PACKET", packet)
-                                    #for packet in block.packets.values():
                                     if packet.should_resend():
                                         print(f"FR RESENDING PACKET {packet} to {client.client_address}")
                                         self.send_packet(
@@ -70,7 +72,7 @@ class Node:
         self.running = True
         while self.running:
             print(f"FS Transfer Protocol: à escuta UDP em {self.address}")
-            data, address = self.transfer_socket.recvfrom(BUFFER_SIZE)
+            data, address = self.transfer_socket.recvfrom(UDP_BUFFER_SIZE)
             print("FR Recv [UDP_SERVER] TRANSFER", {address}, "-",data)
             print("FR HOST, PORT", address[0], address[1])
             print("FR address", Address(host=address[0], port=address[1]).get())
@@ -84,27 +86,26 @@ class Node:
     def udp_stop(self):
         self.running = False
 
+
     def close(self):
         self.udp_stop()
         self.server_socket.close()
         self.transfer_socket.close()
         self.thread_pool.shutdown(wait=True, cancel_futures=False)
 
-    def send_packet(self, *, packet: SentPacket, client_address: Address) -> None:
-        def fail_packet() -> bool:
-            import random
 
-            if random.random() < 0.5:
-                return True
-            return False
-        if not fail_packet():
-            print("FR SEND PACKET", packet)
-            print("A enviar pacote...", packet.model_dump_json())
-            print("FR Send [UDP_SERVER] TRANSFER", {client_address.get()}, "-",packet.model_dump_json())
-            self.transfer_socket.sendto(packet.model_dump_json().encode("utf-8"), client_address.get())
-            print("Pacote enviado")
-        else:
-            print("FR PACKET FAILED", packet)
+    def udp_handler(self, *, data: str, client_address: Address):
+        try:
+            print("FR Recv [UDP_SERVER] Transfer:",data)
+            if data.startswith("1"):
+                self.file_request_handler(packet_info=PacketInfo.model_validate_json(data[1:]), client_address=client_address)
+            elif data.startswith("2"):
+                self.packet_ack_handler(packet_info=PacketInfo.model_validate_json(data[1:]), client_address=client_address)
+            else:
+                print("Error")
+        except Exception as e:
+            print(e)
+    
 
     def file_request_handler(self, *, packet_info: PacketInfo, client_address: Address):
         packet_info.client = client_address
@@ -130,6 +131,7 @@ class Node:
             client_address=client_address
         )
 
+
     def packet_ack_handler(self, *, packet_info: PacketInfo, client_address: Address):
         packet_info.client = client_address
         with self.packet_guard:
@@ -140,17 +142,25 @@ class Node:
         else:
             self.transfer_socket.sendto(b"", client_address.get())
 
-    def udp_handler(self, *, data: str, client_address: Address):
-        try:
-            print("FR Recv [UDP_SERVER] Transfer:",data)
-            if data.startswith("1"):
-                self.file_request_handler(packet_info=PacketInfo.model_validate_json(data[1:]), client_address=client_address)
-            elif data.startswith("2"):
-                self.packet_ack_handler(packet_info=PacketInfo.model_validate_json(data[1:]), client_address=client_address)
-            else:
-                print("Error")
-        except Exception as e:
-            print(e)
+
+    def send_packet(self, *, packet: SentPacket, client_address: Address) -> None:
+        def fail_packet() -> bool:
+            import random
+
+            if random.random() < 0.5:
+                return True
+            return False
+        if not fail_packet():
+            print("FR SEND PACKET", packet)
+            print("A enviar pacote...", packet.model_dump_json())
+            print("FR Send [UDP_SERVER] TRANSFER", {client_address.get()}, "-",packet.model_dump_json())
+            self.transfer_socket.sendto(packet.model_dump_json().encode("utf-8"), client_address.get())
+            print("Pacote enviado")
+        else:
+            print("FR PACKET FAILED", packet)
+
+
+
 
     def download(self, *, file_name: str, address: Address, block: int) -> None:
         try:
@@ -182,6 +192,9 @@ class Node:
         except Exception as e:
             print(e)
 
+
+
+
     def regist_file(self, file_path: Path) -> str:
         message = f"{file_path.name};"
         file_size_bytes = file_path.stat().st_size
@@ -190,6 +203,7 @@ class Node:
         n_blocks = n_full_blocks + 1 if size_last_block > 0 else n_full_blocks
         message += ",".join(map(str, range(n_blocks)))
         return message
+
 
     def regist(self):
         files = self.storage_path.glob("**/*")
@@ -205,6 +219,7 @@ class Node:
             print("Erro ao registar")
         self.thread_pool.submit(self.udp_start)
 
+
     def get_file_list(self) -> None:
         message = "2"
         self.server_socket.sendall(message.encode("utf-8"))
@@ -212,6 +227,7 @@ class Node:
         if data:
             received = data.decode("utf-8")
             print(f"Received {received}")
+
 
     def get_file_info(self, *, file_name: str) -> File:
         message = f"3;{file_name}"
@@ -222,6 +238,7 @@ class Node:
             return File.model_validate_json(data.decode("utf-8"))
         print("Ficheiro não encontrado")
 
+
     def merge_blocks(self, *, file_name: str, block_ids: list[int]) -> None:
         file_path = self.storage_path / f"{file_name}"
         with open(file_path, mode="wb") as fp:
@@ -230,6 +247,7 @@ class Node:
                 with open(path, mode="rb") as fp2:
                     fp.write(fp2.read())
                 path.unlink()
+
 
     def get_file(self, *, file_name: str) -> None:
         print("A descarregar ficheiro...")
