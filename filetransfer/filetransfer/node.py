@@ -19,7 +19,7 @@ class Node:
         storage_folder: str,
         server_address: Address,
         port: int = 9093,
-        n_threads: int = 3,
+        n_threads: int = 4,
     ):
         self.address = Address(socket.gethostbyname(socket.gethostname()), port)
         self.server_address = server_address
@@ -40,32 +40,33 @@ class Node:
         self.packet_guard = Lock()
 
     def packet_recap(self):
-        print("FR STARTING PACKET RECAP")
-        while self.running:
-            sleep(5)
-
-            for client in self.sent_packets.clients.values():
-                if client:
-                    for file in client.files.values():
-                        if file:
+        try:
+            print("FR STARTING PACKET RECAP")
+            while self.running:
+                sleep(5)
+                with self.packet_guard:
+                    print("FR SENT PACKETS", self.sent_packets)
+                    for client in self.sent_packets.clients.values():
+                        for file in client.files.values():
                             for block in file.blocks.values():
-                                if block:
-                                    print("FR RESENDING")
-                                    packet = block.packets[block.packets.keys()[0]]
+                                l = list(block.packets.keys())
+                                if len(l) > 0:
+                                    packet = block.packets[l[0]]
+                                    print("FR CHECKING PACKET", packet)
                                     #for packet in block.packets.values():
                                     if packet.should_resend():
-                                        print("FR RESENDING PACKET", packet)
+                                        print(f"FR RESENDING PACKET {packet} to {client.client_address}")
                                         self.send_packet(
                                             packet=packet,
                                             client_address=client.client_address,
                                         )
                                         packet.update()
-                                    break
-
+        except Exception as e:
+            print(e)
 
 
     def udp_start(self):
-        # self.thread_pool.submit(self.packet_recap)
+        self.thread_pool.submit(self.packet_recap)
         self.running = True
         while self.running:
             print(f"FS Transfer Protocol: à escuta UDP em {self.address}")
@@ -96,13 +97,17 @@ class Node:
             if random.random() < 0.5:
                 return True
             return False
-        if True:#not fail_packet():
+        if not fail_packet():
+            print("FR SEND PACKET", packet)
             print("A enviar pacote...", packet.model_dump_json())
             print("FR Send [UDP_SERVER] TRANSFER", {client_address.get()}, "-",packet.model_dump_json())
             self.transfer_socket.sendto(packet.model_dump_json().encode("utf-8"), client_address.get())
             print("Pacote enviado")
+        else:
+            print("FR PACKET FAILED", packet)
 
     def file_request_handler(self, *, packet_info: PacketInfo, client_address: Address):
+        packet_info.client = client_address
         print("A enviar ficheiro...")
         file_path = self.storage_path / f"{packet_info.file_name}"
         with open(file_path, mode="rb") as fp:
@@ -115,8 +120,6 @@ class Node:
                 block.add_packet(packet=SentPacket(packet_id=packet_count, data=packet))
                 packet_count += 1
             with self.packet_guard:
-                print("FR ADDRESS PACKET INFO", packet_info.client)
-                print("FR ADDRESS CLIENT ADDRESS", client_address)
                 self.sent_packets.add_block(
                     client=packet_info.client,
                     file_name=packet_info.file_name,
@@ -128,6 +131,7 @@ class Node:
         )
 
     def packet_ack_handler(self, *, packet_info: PacketInfo, client_address: Address):
+        packet_info.client = client_address
         with self.packet_guard:
             self.sent_packets.remove_packet(packet_info=packet_info)
         next_packet = self.sent_packets.get_next_packet(packet_info=packet_info)

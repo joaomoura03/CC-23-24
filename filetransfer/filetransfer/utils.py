@@ -134,6 +134,18 @@ class SentCatalog(BaseModel):
             self.clients[packet_info.client].files[packet_info.file_name].blocks[
                 packet_info.block_id
             ].packets.pop(packet_info.packet_id)
+
+            if not self.get_next_packet(packet_info=packet_info):
+                self.clients[packet_info.client].files[packet_info.file_name].blocks.pop(
+                    packet_info.block_id
+                )
+
+                if not self.clients[packet_info.client].files[packet_info.file_name].blocks:
+                    self.clients[packet_info.client].files.pop(packet_info.file_name)
+
+                    if not self.clients[packet_info.client].files:
+                        self.clients.pop(packet_info.client)
+
         except KeyError:
             pass
     
