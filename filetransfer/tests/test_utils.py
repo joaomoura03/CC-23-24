@@ -1,4 +1,5 @@
-from filetransfer.tracker import get_store_path
+from pathlib import Path
+
 from filetransfer.utils import FileCatalog, FileNode
 
 
@@ -21,7 +22,7 @@ def test_save_load(tmpdir):
     fc.add_file_node(file_node=n6, file_name="file4.txt")
     fc.add_file_node(file_node=n7, file_name="file4.txt")
 
-    file_path = get_store_path()  # Path(tmpdir) / "test_save_load.json"
+    file_path = Path(tmpdir) / "test_save_load.json"
 
     with open(file_path, "w") as fp:
         fp.write(fc.model_dump_json())

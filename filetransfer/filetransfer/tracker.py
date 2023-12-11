@@ -7,9 +7,10 @@ from filetransfer.utils import FileCatalog, FileName, FileNode
 
 BUFFER_SIZE = 1024
 
-#TODO criar dicionario com client_address:client_socket para so fechar o socket qd o client ficar inativo
-#qd fechar socket?:
-#fechar qd enviar fechar e ele envia fechar no try finally
+# TODO criar dicionario com client_address:client_socket para so fechar o socket qd o client ficar inativo
+# qd fechar socket?:
+# fechar qd enviar fechar e ele envia fechar no try finally
+
 
 def get_store_path():
     return Path(__file__).parents[1] / "assets" / "FS_Data.json"
@@ -28,7 +29,7 @@ class Tracker:
         self,
         *,
         host: str = socket.gethostbyname(socket.gethostname()),
-        port: int = 9091,
+        port: int = 9090,
         store_path: Path = get_store_path(),
         n_threads: int = 10,
     ) -> None:
@@ -48,9 +49,7 @@ class Tracker:
             self.server_socket.listen()
             client_socket, client_address = self.server_socket.accept()
             print(f"Connection from {client_address}")
-            self.thread_pool.submit(
-                self.handle_client, client_socket, client_address
-            )
+            self.thread_pool.submit(self.handle_client, client_socket, client_address)
 
     def stop(self):
         self.running = False
@@ -68,9 +67,7 @@ class Tracker:
         with open(self.store_path, mode="r", encoding="utf-8") as fp:
             self.store = FileCatalog.model_validate_json(fp.read())
 
-    def handle_client(
-        self, client_socket: socket.socket, client_address: str
-    ):
+    def handle_client(self, client_socket: socket.socket, client_address: str):
         while data := client_socket.recv(BUFFER_SIZE).decode("utf-8"):
             response = self.callback(
                 client_address=client_address[0],
@@ -100,7 +97,7 @@ class Tracker:
             print(n_splits)
             for i in range(2, n_splits, 2):
                 file_name = split_data[i]
-                if not split_data[i+1]:
+                if not split_data[i + 1]:
                     continue
                 blocks = [int(b) for b in split_data[i + 1].split(",")]
                 file_node = FileNode(host=client_address, port=port, blocks=blocks)

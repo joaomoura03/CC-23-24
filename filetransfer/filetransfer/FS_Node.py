@@ -10,11 +10,13 @@ def main():
     parser.add_argument("storage_folder", type=str, help="File storage folder")
     parser.add_argument("server_host", type=str, help="Server host")
     parser.add_argument("server_port", type=int, help="Server port")
+    parser.add_argument("c_port", type=int, help="REMOVE") #REMOVE ME
     args = parser.parse_args()
 
     node = Node(
         storage_folder=args.storage_folder,
         server_address=Address(args.server_host, args.server_port),
+        port=args.c_port, #REMOVE ME
     )
 
     node.regist()
