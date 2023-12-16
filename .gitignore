@@ -1,0 +1,6 @@
+# test data
+assets/
+
+# python
+__pycache__/
+.pytest_cache/

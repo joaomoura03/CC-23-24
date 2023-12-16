@@ -1,36 +1,47 @@
+import os
 import socket
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 from time import sleep
+from typing import Optional
 
-from filetransfer.utils import Address, File, FilePeers, SentCatalog, int_to_bytes, PacketInfo, SentPacket, SentBlock
+from filetransfer.utils import (
+    Address,
+    File,
+    FilePeers,
+    PacketInfo,
+    SentBlock,
+    SentCatalog,
+    SentPacket,
+    SentClient,
+    is_socket_alive
+)
 
 BUFFER_SIZE = 1024
 BLOCK_SIZE = 16
 PACKET_SIZE = 4
 UDP_BUFFER_SIZE = PACKET_SIZE * 6 + 30
+RECONNECT_MAX_TRIES = 5
 
 
 class Node:
+    server_socket: Optional[socket.socket] = None
     def __init__(
         self,
         *,
         storage_folder: str,
         server_address: Address,
-        port: int = 9093,
+        address: Address = Address(port=9093),
         n_threads: int = 10,
     ):
-        self.address = Address(socket.gethostbyname(socket.gethostname()), port)
+        self.address = address
         self.server_address = server_address
         self.transfer_socket = socket.socket(
             family=socket.AF_INET, type=socket.SOCK_DGRAM
         )
-        self.server_socket = socket.socket(
-            family=socket.AF_INET, type=socket.SOCK_STREAM
-        )
-        self.server_socket.connect((self.server_address.host, self.server_address.port))
-        self.transfer_socket.bind((self.address.host, self.address.port))
+        self.transfer_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.transfer_socket.bind(self.address.get())
         self.storage_path = (
             Path(__file__).parents[1] / "assets" / "file_system" / storage_folder
         )
@@ -38,11 +49,46 @@ class Node:
         self.running = False
         self.sent_packets = SentCatalog()
         self.packet_guard = Lock()
-
+        self.regist()
     
+    def connect(self):
+        self.server_socket = socket.socket(
+            family=socket.AF_INET, type=socket.SOCK_STREAM
+        )
+        self.server_socket.connect(self.server_address.get())
+    
+    def send_to_server(self, message: str, retry_count: int=1) -> None:
+        try:
+            if self.server_socket is None or not is_socket_alive(self.server_socket):
+                self.connect()
+            self.server_socket.sendall(message.encode("utf-8"))
+        except Exception as e:
+            self.disconnect_server()
+            if retry_count <= RECONNECT_MAX_TRIES:
+                print(f"Servidor {self.server_address.model_dump_json()} não disponível. A tentar novamente em {retry_count} segundos")
+                sleep(retry_count)
+                self.send_to_server(message=message, retry_count=retry_count+1)
+
+    def udp_packet_retry_one_client(self, *, client: SentClient):
+        for file in client.files.values():
+            for block in file.blocks.values():
+                if not block.packets:
+                    continue
+                packet = list(block.packets.values())[0]
+                print("FR CHECKING PACKET", packet)
+                if packet.should_resend():
+                    print(
+                        f"FR RESENDING PACKET {packet} to"
+                        f" {client.client_address}"
+                    )
+                    self.send_packet(
+                        packet=packet,
+                        client_address=client.client_address,
+                    )
+                    packet.update()
 
 
-    def udp_packet_check(self):
+    def udp_packet_retry(self):
         try:
             print("FR STARTING PACKET RECAP")
             while self.running:
@@ -50,65 +96,77 @@ class Node:
                 with self.packet_guard:
                     print("FR SENT PACKETS", self.sent_packets)
                     for client in self.sent_packets.clients.values():
-                        for file in client.files.values():
-                            for block in file.blocks.values():
-                                l = list(block.packets.keys())
-                                if len(l) > 0:
-                                    packet = block.packets[l[0]]
-                                    print("FR CHECKING PACKET", packet)
-                                    if packet.should_resend():
-                                        print(f"FR RESENDING PACKET {packet} to {client.client_address}")
-                                        self.send_packet(
-                                            packet=packet,
-                                            client_address=client.client_address,
-                                        )
-                                        packet.update()
+                        self.udp_packet_retry_one_client(client=client)
         except Exception as e:
+            import os, traceback
+            traceback.print_exc()
             print(e)
-
+            os._exit(1)
 
     def udp_start(self):
-        self.thread_pool.submit(self.packet_recap)
-        self.running = True
-        while self.running:
-            print(f"FS Transfer Protocol: à escuta UDP em {self.address}")
-            data, address = self.transfer_socket.recvfrom(UDP_BUFFER_SIZE)
-            print("FR Recv [UDP_SERVER] TRANSFER", {address}, "-",data)
-            print("FR HOST, PORT", address[0], address[1])
-            print("FR address", Address(host=address[0], port=address[1]).get())
-            self.thread_pool.submit(
-                self.udp_handler,
-                data=data.decode("utf-8"),
-                client_address=Address(host=address[0], port=address[1])
-            )
+        try:
+            self.thread_pool.submit(self.udp_packet_retry)
+            self.running = True
+            while self.running:
+                print(f"FS Transfer Protocol: à escuta UDP em {self.address.get()}")
+                data, address = self.transfer_socket.recvfrom(UDP_BUFFER_SIZE)
+                print("FR Recv [UDP_SERVER] TRANSFER", {address}, "-", data)
+                print("FR HOST, PORT", address[0], address[1])
+                print("FR address", Address(host=address[0], port=address[1]).get())
+                self.thread_pool.submit(
+                    self.udp_handler,
+                    data=data,
+                    client_address=Address(host=address[0], port=address[1]),
+                )
+        except Exception as e:
+            import os, traceback
+            traceback.print_exc()
+            print(e)
+            os._exit(1)
 
 
     def udp_stop(self):
         self.running = False
 
+    def disconnect_server(self):
+        self.server_socket.close()
+        self.server_socket = None
+    
+    def disconnect_transfer(self):
+        self.transfer_socket.close()
+        self.transfer_socket = None
 
     def close(self):
         self.udp_stop()
-        self.server_socket.close()
-        self.transfer_socket.close()
-        self.thread_pool.shutdown(wait=True, cancel_futures=False)
+        self.disconnect_server()
+        self.disconnect_transfer()
+        self.thread_pool.shutdown(wait=False, cancel_futures=True)
+        os._exit(0)
 
-
-    def udp_handler(self, *, data: str, client_address: Address):
+    def udp_handler(self, *, data: bytes, client_address: Address):
         try:
-            print("FR Recv [UDP_SERVER] Transfer:",data)
-            if data.startswith("1"):
-                self.file_request_handler(packet_info=PacketInfo.model_validate_json(data[1:]), client_address=client_address)
-            elif data.startswith("2"):
-                self.packet_ack_handler(packet_info=PacketInfo.model_validate_json(data[1:]), client_address=client_address)
+            print("FR Recv [UDP_SERVER] Transfer:", data)
+            packet_info=PacketInfo.from_bytes(data[1:])
+            if data[0] == b"1"[0]:
+                self.file_request_handler(
+                    packet_info=packet_info,
+                    client_address=client_address,
+                )
+            elif data[0] == b"2"[0]:
+                self.packet_ack_handler(
+                    packet_info=packet_info,
+                    client_address=client_address,
+                )
             else:
-                print("Error")
+                print("Error", data)
         except Exception as e:
+            import os, traceback
+            traceback.print_exc()
             print(e)
-    
+            os._exit(1)
+
 
     def file_request_handler(self, *, packet_info: PacketInfo, client_address: Address):
-        packet_info.client = client_address
         print("A enviar ficheiro...")
         file_path = self.storage_path / f"{packet_info.file_name}"
         with open(file_path, mode="rb") as fp:
@@ -122,26 +180,23 @@ class Node:
                 packet_count += 1
             with self.packet_guard:
                 self.sent_packets.add_block(
-                    client=packet_info.client,
+                    client=client_address,
                     file_name=packet_info.file_name,
                     block=block,
                 )
         self.send_packet(
-            packet=self.sent_packets.get_next_packet(packet_info=packet_info),
-            client_address=client_address
+            packet=self.sent_packets.get_next_packet(packet_info=packet_info, client=client_address),
+            client_address=client_address,
         )
 
-
     def packet_ack_handler(self, *, packet_info: PacketInfo, client_address: Address):
-        packet_info.client = client_address
         with self.packet_guard:
-            self.sent_packets.remove_packet(packet_info=packet_info)
-        next_packet = self.sent_packets.get_next_packet(packet_info=packet_info)
+            self.sent_packets.remove_packet(packet_info=packet_info, client=client_address)
+        next_packet = self.sent_packets.get_next_packet(packet_info=packet_info, client=client_address)
         if next_packet:
             self.send_packet(packet=next_packet, client_address=client_address)
         else:
             self.transfer_socket.sendto(b"", client_address.get())
-
 
     def send_packet(self, *, packet: SentPacket, client_address: Address) -> None:
         def fail_packet() -> bool:
@@ -150,49 +205,57 @@ class Node:
             if random.random() < 0.5:
                 return True
             return False
+
         if not fail_packet():
             print("FR SEND PACKET", packet)
             print("A enviar pacote...", packet.model_dump_json())
-            print("FR Send [UDP_SERVER] TRANSFER", {client_address.get()}, "-",packet.model_dump_json())
-            self.transfer_socket.sendto(packet.model_dump_json().encode("utf-8"), client_address.get())
+            print(
+                "FR Send [UDP_SERVER] TRANSFER",
+                {client_address.get()},
+                "-",
+                packet.model_dump_json(),
+            )
+            self.transfer_socket.sendto(
+                packet.to_bytes(), client_address.get()
+            )
             print("Pacote enviado")
         else:
             print("FR PACKET FAILED", packet)
-
-
-
 
     def download(self, *, file_name: str, address: Address, block: int) -> None:
         try:
             client_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
             packet_info = PacketInfo(
-                client=self.address, file_name=file_name, block_id=block, packet_id=-1
+                file_name=file_name, block_id=block, packet_id=-1
             )
-            message = f"1{packet_info.model_dump_json()}"
+            message = b"1"+packet_info.to_bytes()
             print(f"Send to {address.get()} the message {message}")
-            print("FR Send [UDP_CLIENT] CLIENT", {address.get()}, "-",message)
-            
-            client_socket.sendto(
-                message.encode("utf-8"), address.get()
-            )
+            print("FR Send [UDP_CLIENT] CLIENT", {address.get()}, "-", message)
+
+            client_socket.sendto(message, address.get())
             file_path = self.storage_path / f"{block}_{file_name}"
             with open(file_path, mode="wb") as fp:
                 while True:
                     print("A receber ficheiro...")
                     data, address = client_socket.recvfrom(UDP_BUFFER_SIZE)
-                    print("FR Recv [UDP_CLIENT] CLIENT", {address}, "-",data)
+                    print("FR Recv [UDP_CLIENT] CLIENT", {address}, "-", data)
                     if not data:
                         break
-                    packet = SentPacket.model_validate_json(data.decode("utf-8"))
-                    packet_info = PacketInfo(client=self.address, file_name=file_name, block_id=block, packet_id=packet.packet_id)
-                    ack = f"2{packet_info.model_dump_json()}"
-                    print("FR Send [UDP_CLIENT] CLIENT", {address}, "-",ack)
-                    client_socket.sendto(ack.encode("utf-8"), address)
+                    packet = SentPacket.from_bytes(data=data)
+                    packet_info = PacketInfo(
+                        file_name=file_name,
+                        block_id=block,
+                        packet_id=packet.packet_id,
+                    )
+                    ack = b"2"+packet_info.to_bytes()
+                    print("FR Send [UDP_CLIENT] CLIENT", {address}, "-", ack)
+                    client_socket.sendto(ack, address)
                     fp.write(packet.data)
         except Exception as e:
+            import os, traceback
+            traceback.print_exc()
             print(e)
-
-
+            os._exit(1)
 
 
     def regist_file(self, file_path: Path) -> str:
@@ -204,13 +267,12 @@ class Node:
         message += ",".join(map(str, range(n_blocks)))
         return message
 
-
     def regist(self):
         files = self.storage_path.glob("**/*")
         message = f"1;{self.address.port};" + ";".join([
             self.regist_file(file) for file in files
         ])
-        self.server_socket.sendall(message.encode("utf-8"))
+        self.send_to_server(message=message)
         data = self.server_socket.recv(BUFFER_SIZE)
         if data:
             received = data.decode("utf-8")
@@ -219,25 +281,22 @@ class Node:
             print("Erro ao registar")
         self.thread_pool.submit(self.udp_start)
 
-
     def get_file_list(self) -> None:
         message = "2"
-        self.server_socket.sendall(message.encode("utf-8"))
+        self.send_to_server(message=message)
         data = self.server_socket.recv(BUFFER_SIZE)
         if data:
             received = data.decode("utf-8")
             print(f"Received {received}")
 
-
     def get_file_info(self, *, file_name: str) -> File:
         message = f"3;{file_name}"
-        self.server_socket.sendall(message.encode("utf-8"))
+        self.send_to_server(message=message)
         data = self.server_socket.recv(BUFFER_SIZE)
         if data:
             print(data.decode("utf-8"))
             return File.model_validate_json(data.decode("utf-8"))
         print("Ficheiro não encontrado")
-
 
     def merge_blocks(self, *, file_name: str, block_ids: list[int]) -> None:
         file_path = self.storage_path / f"{file_name}"
@@ -247,7 +306,6 @@ class Node:
                 with open(path, mode="rb") as fp2:
                     fp.write(fp2.read())
                 path.unlink()
-
 
     def get_file(self, *, file_name: str) -> None:
         print("A descarregar ficheiro...")

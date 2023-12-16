@@ -1,15 +1,13 @@
+import os
 import socket
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 
-from filetransfer.utils import FileCatalog, FileName, FileNode
+from filetransfer.utils import FileCatalog, FileName, FileNode, Address
 
 BUFFER_SIZE = 1024
 
-# TODO criar dicionario com client_address:client_socket para so fechar o socket qd o client ficar inativo
-# qd fechar socket?:
-# fechar qd enviar fechar e ele envia fechar no try finally
 
 
 def get_store_path():
@@ -28,13 +26,13 @@ class Tracker:
     def __init__(
         self,
         *,
-        host: str = socket.gethostbyname(socket.gethostname()),
-        port: int = 9090,
+        address: Address = Address(port=9090),
         store_path: Path = get_store_path(),
         n_threads: int = 10,
     ) -> None:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind((host, port))
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind(address.get())
         self.store_path = store_path
         self.memory_guard = Lock()
         self.disk_guard = Lock()
@@ -57,15 +55,17 @@ class Tracker:
     def close(self):
         self.stop()
         self.server_socket.close()
-        self.thread_pool.shutdown(wait=True, cancel_futures=False)
+        self.thread_pool.shutdown(wait=False, cancel_futures=True)
+        os._exit(0)
 
     def save(self):
-        with open(self.store_path, mode="w", encoding="utf-8") as fp:
-            fp.write(self.store.model_dump_json())
+        self.store.save(path=self.store_path)
 
     def load(self):
-        with open(self.store_path, mode="r", encoding="utf-8") as fp:
-            self.store = FileCatalog.model_validate_json(fp.read())
+        try:
+            self.store = FileCatalog.load(path=self.store_path)
+        except FileNotFoundError:
+            self.store = FileCatalog()
 
     def handle_client(self, client_socket: socket.socket, client_address: str):
         while data := client_socket.recv(BUFFER_SIZE).decode("utf-8"):
@@ -116,5 +116,8 @@ class Tracker:
 
     def file_info(self, *, file_name: FileName) -> str:
         print(f"Informação de {file_name}")
-        with self.memory_guard:
-            return self.store[file_name].model_dump_json()
+        try:
+            with self.memory_guard:
+                return self.store[file_name].model_dump_json()
+        except KeyError:
+            return ""

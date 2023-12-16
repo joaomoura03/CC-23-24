@@ -5,6 +5,8 @@ def main():
     tracker = Tracker()
     try:
         tracker.start()
+    except KeyboardInterrupt:
+        pass
     finally:
         tracker.close()
 
