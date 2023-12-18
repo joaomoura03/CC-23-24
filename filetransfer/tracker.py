@@ -45,7 +45,7 @@ class Tracker:
             print(f"Servidor ativo em {self.server_socket.getsockname()}")
             self.server_socket.listen()
             client_socket, client_address = self.server_socket.accept()
-            print(f"Connection from {client_address}")
+            print(f"Conexão de {client_address}")
             self.thread_pool.submit(self.handle_client, client_socket, client_address)
 
     def stop(self):
@@ -74,7 +74,7 @@ class Tracker:
             )
             print(f"Sending {response}")
             client_socket.sendall(response.encode("utf-8"))
-        print(f"Connection from {client_address} closed")
+        print(f"Conexão de {client_address} fechada")
         client_socket.close()
 
     def callback(self, *, client_address: str, data: str) -> str:
@@ -98,7 +98,8 @@ class Tracker:
                 if not split_data[i + 1]:
                     continue
                 blocks = [int(b) for b in split_data[i + 1].split(",")]
-                file_node = FileNode(host=address_to_dns_host(client_address), port=int(port), blocks=blocks)
+                host = address_to_dns_host(client_address).split(".",1)[0]
+                file_node = FileNode(host=host, port=int(port), blocks=blocks)
                 with self.memory_guard:
                     self.store.add_file_node(file_node=file_node, file_name=file_name)
             with self.disk_guard:

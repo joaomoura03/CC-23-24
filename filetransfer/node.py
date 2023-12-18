@@ -69,7 +69,7 @@ class Node:
             if retry_count <= RECONNECT_MAX_TRIES:
                 print(
                     f"Servidor {self.server_address.to_string()} não disponível."
-                    f" A tentar novamente em {retry_count} segundos"
+                    f"A tentar novamente em {retry_count} segundos"
                 )
                 sleep(retry_count)
                 self.send_to_server(message=message, retry_count=retry_count + 1)
@@ -88,6 +88,7 @@ class Node:
                     packet.update()
 
     def udp_packet_retry(self):
+        print("FR A verificar pacotes...")
         try:
             while self.running:
                 sleep(5)
@@ -209,13 +210,14 @@ class Node:
         if not fail_packet():
             self.transfer_socket.sendto(packet.to_bytes(), client_address.get())
             print("Pacote enviado")
+        else:
+            print("Pacote falhou")
 
     def download(self, *, file_name: str, address: Address, block: int) -> None:
         try:
             client_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
             packet_info = PacketInfo(file_name=file_name, block_id=block, packet_id=-1)
             message = b"1" + packet_info.to_bytes()
-            print(f"Send to {address.get()} the message {message}")
 
             client_socket.sendto(message, address.get())
             file_path = self.storage_path / f"{block}_{file_name}"
@@ -278,7 +280,6 @@ class Node:
         self.send_to_server(message=message)
         data = self.server_socket.recv(BUFFER_SIZE)
         if data:
-            print(data.decode("utf-8"))
             return File.from_json(data.decode("utf-8"), mode="address")
         print("Ficheiro não encontrado")
 
