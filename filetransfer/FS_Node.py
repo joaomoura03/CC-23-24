@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 
-from filetransfer.node import Node
-from filetransfer.utils import Address
+from node import Node
+from utils import Address
 
 
 def main():

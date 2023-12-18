@@ -24,6 +24,7 @@ def test_address_hash_equals():
     assert hash(a1) == hash(a2)
     assert a1 == a2
 
+test_address_hash_equals()
 
 def test_address_serialization():
     address = Address(host="1.2.3.4", port=1234)

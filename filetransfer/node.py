@@ -5,10 +5,9 @@ from pathlib import Path
 from threading import Lock
 from time import sleep
 from typing import Optional
-from datetime import datetime
 import traceback
 
-from filetransfer.utils import (
+from utils import (
     Address,
     File,
     FilePeers,

@@ -1,4 +1,4 @@
-from filetransfer.tracker import Tracker
+from tracker import Tracker
 
 
 def main():

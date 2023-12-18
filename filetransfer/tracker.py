@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 
-from filetransfer.utils import Address, FileCatalog, FileName, FileNode, address_to_dns_host
+from utils import Address, FileCatalog, FileName, FileNode, address_to_dns_host
 
 BUFFER_SIZE = 1024
 
