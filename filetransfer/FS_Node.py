@@ -10,18 +10,17 @@ def main():
     parser.add_argument("storage_folder", type=str, help="File storage folder")
     parser.add_argument("server_host", type=str, help="Server host")
     parser.add_argument("server_port", type=int, help="Server port")
-
     args = parser.parse_args()
+
     print(
         f"Conexão FS Track Protocol com servidor {args.server_host} porta"
         f" {args.server_port}."
     )
-    
-
     node = Node(
         storage_folder=args.storage_folder,
         server_address=Address(host=args.server_host, port=args.server_port),
     )
+
 
     try:
         while True:

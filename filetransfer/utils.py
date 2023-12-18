@@ -162,8 +162,6 @@ class PacketInfo():
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "PacketInfo":
-        print(data.decode("utf-8"))
-        print(data.decode("utf-8").split(";"))
         file_name, block_id, packet_id = data.decode("utf-8").split(";")
         return cls(
             file_name=file_name, block_id=int(block_id), packet_id=int(packet_id)

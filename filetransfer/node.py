@@ -34,7 +34,7 @@ class Node:
         *,
         storage_folder: str,
         server_address: Address,
-        address: Address = Address(port=9090),
+        address: Address = Address(port=9095),
         n_threads: int = 10,
     ):
         self.address = address
@@ -81,6 +81,7 @@ class Node:
                     continue
                 packet = list(block.packets.values())[0]
                 if packet.should_resend():
+                    print("A reenviar pacote...")
                     self.send_packet(
                         packet=packet,
                         client_address=client.client_address,
@@ -223,7 +224,6 @@ class Node:
             file_path = self.storage_path / f"{block}_{file_name}"
             with open(file_path, mode="wb") as fp:
                 while True:
-                    print("A receber ficheiro...")
                     data, address = client_socket.recvfrom(UDP_BUFFER_SIZE)
                     if not data:
                         break
