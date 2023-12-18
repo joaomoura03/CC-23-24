@@ -1,0 +1,14 @@
+zone "cc.pt" IN {
+        type master;
+        file "/etc/bind/zones/cc.pt";
+};
+
+zone "1.1.10.in-addr.arpa" IN {
+        type master;
+        file "/etc/bind/zones/cc.pt.rev.1.1.10";
+};
+
+zone "2.2.10.in-addr.arpa" IN {
+        type master;
+        file "/etc/bind/zones/cc.pt.rev.2.2.10";
+};

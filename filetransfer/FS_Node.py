@@ -27,8 +27,8 @@ def main():
     try:
         while True:
             choice = input(
-                "Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros       "
-                "         \n3;(file_name) - Descarregar Ficheiro\n4 - Fechar\n"
+                "Escolha uma operação:\n1 - Atualizar Node\n2 - Informação Ficheiros   "
+                "             \n3;(file_name) - Descarregar Ficheiro\n4 - Fechar\n"
             )
             if choice == "1":
                 node.udp_stop()

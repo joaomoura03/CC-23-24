@@ -1,5 +1,5 @@
 # test data
-assets/
+assets/filesystem/
 
 # python
 __pycache__/

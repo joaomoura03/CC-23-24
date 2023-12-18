@@ -1,8 +1,9 @@
+import socket
 from datetime import datetime, timedelta
 from typing import Any, Optional
-import socket
 
-from pydantic import BaseModel, Field, PrivateAttr, model_serializer, model_validator, field_serializer, field_validator
+from dataclasses import dataclass
+import json
 
 PACKET_ACK_TIMEOUT = 5
 
@@ -11,22 +12,18 @@ Url = str
 PacketId = int
 BlockId = int
 
-
-class Address(BaseModel):
-    host: str = socket.gethostbyname(socket.gethostname())
+@dataclass
+class Address():
     port: int
+    host: str = socket.gethostbyname(socket.gethostname())
 
-    @model_serializer()
-    def serialize(self):
-        return f"{self.host}:{self.port}"
-
-    @model_validator(mode="before")
+    def to_string(self) -> str:
+        return f"\"{self.host}:{self.port}\""
+    
     @classmethod
-    def parse_address(cls, data: Any) -> Any:
-        if isinstance(data, str) and ":" in data:
-            host, port = data.split(":")
-            return {"host": host, "port": port}
-        return data
+    def from_string(cls, address_string: str) -> "Address":
+        address = address_string[1:-1]
+        return cls(host=address.split(":")[0], port=int(address.split(":")[1]))
 
     def __hash__(self) -> int:
         return hash((self.host, self.port))
@@ -36,24 +33,54 @@ class Address(BaseModel):
             return "127.0.0.1", self.port
         return self.host, self.port
 
-
-class FileNode(BaseModel):
+@dataclass
+class FileNode():
     host: str
     port: int
     blocks: list[int]
+    
+    def to_json(self) -> str:
+        return "{" + f"\"host\":\"{self.host}\",\"port\":{self.port},\"blocks\":{json.dumps(self.blocks)}" + "}"
+    
+    @classmethod
+    def from_json(cls, node_string: str, mode: str) -> "FileNode":
+        parts = node_string[1:-1].split(",", 2)
+        if mode == "address":
+            host = dns_host_to_address(parts[0].split(':')[1][1:-1])
+        elif mode == "host":
+            host = parts[0].split(':')[1][1:-1]
+        return cls(
+            host = host,
+            port = int(parts[1].split(':')[1]),
+            blocks = json.loads(parts[2].split(":")[1])
+        )
 
 
-class File(BaseModel):
+@dataclass
+class File():
     name: str
     nodes: dict[Url, FileNode]
 
     def add_node(self, *, node: FileNode) -> "File":
         self.nodes[f"{node.host}:{node.port}"] = node
         return self
+    
+    def to_json(self) -> str:
+        return "{" + f"\"name\":\"{self.name}\",\"nodes\":" + "{" + ','.join([f"\"{url}\":{node.to_json()}" for url, node in self.nodes.items()]) + "}}"
+    
+    @classmethod
+    def from_json(cls, file_string: str, mode: str) -> "File":
+        parts = file_string.split(",", 1)
+        nodes = parts[1].split(":", 1)[1][:-2].split("}")
 
+        return cls(
+            name = parts[0].split(":")[1][1:-1],
+            nodes = {node[1:].split(":", 2)[0] + ":" + node.split(":", 2)[1]: FileNode.from_json(node.split(":", 2)[2]+"}", mode) for node in nodes if node}
+        )
 
-class FileCatalog(BaseModel):
-    files: dict[FileName, File] = Field(default_factory=dict)
+@dataclass
+class FileCatalog():
+    files: dict[FileName, File]
 
     def __getitem__(self, file_name: FileName) -> File:
         return self.files[file_name]
@@ -74,58 +101,88 @@ class FileCatalog(BaseModel):
     def get_file_nodes(self, *, file_name: FileName) -> list[FileNode]:
         return list(self.files[file_name].nodes.values())
 
+    def to_json(self) -> str:
+        return "{" + f"\"files\":" + "{" + ','.join([f"\"{file_name}\":{file.to_json()}" for file_name, file in self.files.items()]) + "}}"
+
+    @classmethod
+    def from_json(cls, catalog_string: str) -> "FileCatalog":
+        content = catalog_string[1:-2].split(":", 1)[1]
+        split = content.split("}")[:-3]
+        file_names = []
+        files = []
+        j = i = c = 0
+        max = len(split)
+        while i < max:
+            file_names.append(split[i].split(":", 1)[0][2:-1])
+            files.append(split[i].split(":", 1)[1])
+            j = i + 1
+            while j < max and split[j]:
+                files[c] += "}" + split[j]
+                j += 1
+            files[c] += "}}}"
+            i = j + 2
+            c += 1
+        return cls(
+            files = {file_names[i]: File.from_json(files[i], mode="host") for i in range(len(files))}
+        )
+
     def save(self, *, path: str) -> None:
         with open(path, mode="w", encoding="utf-8") as fp:
-            fp.write(self.model_dump_json())
+            fp.write(self.to_json())
 
     @classmethod
     def load(cls, *, path: str) -> "FileCatalog":
         with open(path, mode="r", encoding="utf-8") as fp:
-            return cls.model_validate_json(fp.read())
+            return cls.from_json(fp.read())
 
-
-class FilePeers(BaseModel):
-    info: dict[int, Address] = Field(default_factory=dict)
+@dataclass
+class FilePeers():
+    info: dict[int, Address]
 
     def __getitem__(self, block: int) -> Address:
         return self.info[block]
 
     @classmethod
     def from_file(cls, file: File) -> "FilePeers":
-        file_peers = cls()
+        file_peers = cls(info={})
         for node in file.nodes.values():
             for block in node.blocks:
                 if block not in file_peers.info:
-                    file_peers.info[block] = Address(host=node.host, port=node.port)
+                    file_peers.info[block] = Address(host=dns_host_to_address(node.host), port=node.port)
         return file_peers
 
-
-class PacketInfo(BaseModel):
+@dataclass
+class PacketInfo():
     file_name: FileName
     block_id: BlockId
     packet_id: PacketId = 0
 
     def to_bytes(self) -> bytes:
-        return (
-            f"{self.file_name};{self.block_id};{self.packet_id}".encode("utf-8")
-        )
-    
+        return f"{self.file_name};{self.block_id};{self.packet_id}".encode("utf-8")
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "PacketInfo":
         print(data.decode("utf-8"))
         print(data.decode("utf-8").split(";"))
         file_name, block_id, packet_id = data.decode("utf-8").split(";")
-        return cls(file_name=file_name, block_id=int(block_id), packet_id=int(packet_id))
+        return cls(
+            file_name=file_name, block_id=int(block_id), packet_id=int(packet_id)
+        )
 
 
-class SentPacket(BaseModel):
+class SentPacket():
     packet_id: PacketId
     data: bytes
-    _sent_at: datetime = PrivateAttr(default_factory=datetime.now)
+    sent_at: datetime
+
+    def __init__(self, *, packet_id: PacketId, data: bytes):
+        self.packet_id = packet_id
+        self.data = data
+        self.sent_at = datetime.now()
 
     def to_bytes(self) -> bytes:
         return f"{self.packet_id};".encode("utf-8") + self.data
-    
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "SentPacket":
         packet_id, data = data.split(b";", 1)
@@ -135,13 +192,13 @@ class SentPacket(BaseModel):
         return self.packet_id == other.packet_id and self.data == other.data
 
     def should_resend(self) -> bool:
-        return self._sent_at + timedelta(seconds=PACKET_ACK_TIMEOUT) < datetime.now()
+        return self.sent_at + timedelta(seconds=PACKET_ACK_TIMEOUT) < datetime.now()
 
     def update(self) -> None:
-        self._sent_at = datetime.now()
+        self.sent_at = datetime.now()
 
-
-class SentBlock(BaseModel):
+@dataclass
+class SentBlock():
     block_id: BlockId
     packets: dict[PacketId, SentPacket]
 
@@ -154,41 +211,43 @@ class SentBlock(BaseModel):
             self.packets.pop(packet_id)
         return self
 
-
-class SentFile(BaseModel):
+@dataclass
+class SentFile():
     file_name: FileName
     blocks: dict[BlockId, SentBlock]
 
     def add_block(self, *, block: SentBlock) -> "SentFile":
         self.blocks[block.block_id] = block
         return self
-    
-    def remove_packet(self, *, block_id: BlockId, packet_id: PacketId) -> "SentBlock":
+
+    def remove_packet(self, *, block_id: BlockId, packet_id: PacketId) -> "SentFile":
         if block_id in self.blocks:
             self.blocks[block_id].remove_packet(packet_id=packet_id)
         if not self.blocks[block_id].packets:
             self.blocks.pop(block_id)
         return self
 
-
-class SentClient(BaseModel):
+@dataclass
+class SentClient():
     client_address: Address
     files: dict[FileName, SentFile]
 
     def add_file(self, *, file: SentFile) -> "SentClient":
         self.files[file.file_name] = file
         return self
-    
-    def remove_packet(self, *, packet_info: PacketInfo) -> "SentBlock":
+
+    def remove_packet(self, *, packet_info: PacketInfo) -> "SentClient":
         if packet_info.file_name in self.files:
-            self.files[packet_info.file_name].remove_packet(block_id=packet_info.block_id, packet_id=packet_info.packet_id)
+            self.files[packet_info.file_name].remove_packet(
+                block_id=packet_info.block_id, packet_id=packet_info.packet_id
+            )
         if not self.files[packet_info.file_name].blocks:
             self.files.pop(packet_info.file_name)
         return self
 
-
-class SentCatalog(BaseModel):
-    clients: dict[Address, SentClient] = Field(default_factory=dict)
+@dataclass
+class SentCatalog():
+    clients: dict[Address, SentClient]
 
     def add_file(self, *, client: Address, file: SentFile) -> "SentCatalog":
         if client not in self.clients:
@@ -204,14 +263,18 @@ class SentCatalog(BaseModel):
         self.clients[client].files[file_name].add_block(block=block)
         return self
 
-    def remove_packet(self, *, packet_info: PacketInfo, client: Address) -> "SentCatalog":
+    def remove_packet(
+        self, *, packet_info: PacketInfo, client: Address
+    ) -> "SentCatalog":
         if client in self.clients:
             self.clients[client].remove_packet(packet_info=packet_info)
         if not self.clients[client].files:
             self.clients.pop(client)
         return self
 
-    def get_next_packet(self, *, packet_info: PacketInfo, client: Address) -> Optional[SentPacket]:
+    def get_next_packet(
+        self, *, packet_info: PacketInfo, client: Address
+    ) -> Optional[SentPacket]:
         try:
             return (
                 self.clients[client]
@@ -221,6 +284,7 @@ class SentCatalog(BaseModel):
             )
         except KeyError:
             return None
+
 
 
 def int_to_bytes(number: int, length: int = 4) -> bytes:
@@ -243,3 +307,10 @@ def is_socket_alive(s: socket.socket) -> bool:
     except Exception as e:
         return True
     return True
+
+
+def dns_host_to_address(host: str) -> str:
+    return socket.gethostbyname(host)
+
+def address_to_dns_host(address: str) -> str:
+    return socket.gethostbyaddr(address)[0]

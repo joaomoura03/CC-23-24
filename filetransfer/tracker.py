@@ -4,10 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 
-from filetransfer.utils import FileCatalog, FileName, FileNode, Address
+from filetransfer.utils import Address, FileCatalog, FileName, FileNode, address_to_dns_host
 
 BUFFER_SIZE = 1024
-
 
 
 def get_store_path():
@@ -65,7 +64,7 @@ class Tracker:
         try:
             self.store = FileCatalog.load(path=self.store_path)
         except FileNotFoundError:
-            self.store = FileCatalog()
+            self.store = FileCatalog({})
 
     def handle_client(self, client_socket: socket.socket, client_address: str):
         while data := client_socket.recv(BUFFER_SIZE).decode("utf-8"):
@@ -94,13 +93,12 @@ class Tracker:
         port = split_data[1]
         n_splits = len(split_data)
         if n_splits > 2:
-            print(n_splits)
             for i in range(2, n_splits, 2):
                 file_name = split_data[i]
                 if not split_data[i + 1]:
                     continue
                 blocks = [int(b) for b in split_data[i + 1].split(",")]
-                file_node = FileNode(host=client_address, port=port, blocks=blocks)
+                file_node = FileNode(host=address_to_dns_host(client_address), port=int(port), blocks=blocks)
                 with self.memory_guard:
                     self.store.add_file_node(file_node=file_node, file_name=file_name)
             with self.disk_guard:
@@ -118,6 +116,6 @@ class Tracker:
         print(f"Informação de {file_name}")
         try:
             with self.memory_guard:
-                return self.store[file_name].model_dump_json()
+                return self.store[file_name].to_json()
         except KeyError:
             return ""
