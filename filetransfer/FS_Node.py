@@ -21,7 +21,6 @@ def main():
         server_address=Address(host=args.server_host, port=args.server_port),
     )
 
-
     try:
         while True:
             choice = input(

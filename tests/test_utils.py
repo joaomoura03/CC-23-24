@@ -9,10 +9,6 @@ from filetransfer.utils import (
     FileCatalog,
     FileNode,
     FilePeers,
-    SentBlock,
-    SentCatalog,
-    SentClient,
-    SentFile,
     SentPacket,
 )
 
@@ -24,7 +20,9 @@ def test_address_hash_equals():
     assert hash(a1) == hash(a2)
     assert a1 == a2
 
+
 test_address_hash_equals()
+
 
 def test_address_serialization():
     address = Address(host="1.2.3.4", port=1234)
@@ -98,8 +96,6 @@ def test_file_catalog_save_load(tmpdir):
     fc1.save(path=file_path)
 
     fc2 = FileCatalog.load(path=file_path)
-    fc2.save(path=file_path)
-
 
     assert fc1 == fc2
 
@@ -138,8 +134,6 @@ def test_sent_packet():
 
     assert dt2 <= packet.sent_at
     assert dt3 <= packet.sent_at <= dt4
-
-
 
 
 def test_packet_content():

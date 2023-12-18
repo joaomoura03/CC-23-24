@@ -1,9 +1,8 @@
-import socket
-from datetime import datetime, timedelta
-from typing import Any, Optional
-
-from dataclasses import dataclass
 import json
+import socket
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Optional
 
 PACKET_ACK_TIMEOUT = 5
 
@@ -12,14 +11,15 @@ Url = str
 PacketId = int
 BlockId = int
 
+
 @dataclass
-class Address():
+class Address:
     port: int
     host: str = socket.gethostbyname(socket.gethostname())
 
     def to_string(self) -> str:
-        return f"\"{self.host}:{self.port}\""
-    
+        return f'"{self.host}:{self.port}"'
+
     @classmethod
     def from_string(cls, address_string: str) -> "Address":
         address = address_string[1:-1]
@@ -33,53 +33,75 @@ class Address():
             return "127.0.0.1", self.port
         return self.host, self.port
 
+
 @dataclass
-class FileNode():
+class FileNode:
     host: str
     port: int
     blocks: list[int]
-    
+
     def to_json(self) -> str:
-        return "{" + f"\"host\":\"{self.host}\",\"port\":{self.port},\"blocks\":{json.dumps(self.blocks)}" + "}"
-    
+        return (
+            "{"
+            + f'"host":"{self.host}","port":{self.port},"blocks":{json.dumps(self.blocks)}'
+            + "}"
+        )
+
     @classmethod
     def from_json(cls, node_string: str, mode: str) -> "FileNode":
         parts = node_string[1:-1].split(",", 2)
         if mode == "address":
-            host = dns_host_to_address(parts[0].split(':')[1][1:-1])
+            host = dns_host_to_address(parts[0].split(":")[1][1:-1])
         elif mode == "host":
-            host = parts[0].split(':')[1][1:-1]
+            host = parts[0].split(":")[1][1:-1]
         return cls(
-            host = host,
-            port = int(parts[1].split(':')[1]),
-            blocks = json.loads(parts[2].split(":")[1])
+            host=host,
+            port=int(parts[1].split(":")[1]),
+            blocks=json.loads(parts[2].split(":")[1]),
         )
 
 
 @dataclass
-class File():
+class File:
     name: str
     nodes: dict[Url, FileNode]
 
     def add_node(self, *, node: FileNode) -> "File":
         self.nodes[f"{node.host}:{node.port}"] = node
         return self
-    
+
     def to_json(self) -> str:
-        return "{" + f"\"name\":\"{self.name}\",\"nodes\":" + "{" + ','.join([f"\"{url}\":{node.to_json()}" for url, node in self.nodes.items()]) + "}}"
-    
+        return (
+            "{"
+            + f'"name":"{self.name}","nodes":'
+            + "{"
+            + ",".join([
+                f"\"{url}\":{node.to_json()}" for url, node in self.nodes.items()
+            ])
+            + "}}"
+        )
+
     @classmethod
     def from_json(cls, file_string: str, mode: str) -> "File":
         parts = file_string.split(",", 1)
         nodes = parts[1].split(":", 1)[1][:-2].split("}")
 
         return cls(
-            name = parts[0].split(":")[1][1:-1],
-            nodes = {node[1:].split(":", 2)[0] + ":" + node.split(":", 2)[1]: FileNode.from_json(node.split(":", 2)[2]+"}", mode) for node in nodes if node}
+            name=parts[0].split(":")[1][1:-1],
+            nodes={
+                node[1:].split(":", 2)[0][1:]
+                + ":"
+                + node.split(":", 2)[1][:-1]: FileNode.from_json(
+                    node.split(":", 2)[2] + "}", mode
+                )
+                for node in nodes
+                if node
+            },
         )
 
+
 @dataclass
-class FileCatalog():
+class FileCatalog:
     files: dict[FileName, File]
 
     def __getitem__(self, file_name: FileName) -> File:
@@ -102,7 +124,16 @@ class FileCatalog():
         return list(self.files[file_name].nodes.values())
 
     def to_json(self) -> str:
-        return "{" + f"\"files\":" + "{" + ','.join([f"\"{file_name}\":{file.to_json()}" for file_name, file in self.files.items()]) + "}}"
+        return (
+            "{"
+            + f'"files":'
+            + "{"
+            + ",".join([
+                f'"{file_name}":{file.to_json()}'
+                for file_name, file in self.files.items()
+            ])
+            + "}}"
+        )
 
     @classmethod
     def from_json(cls, catalog_string: str) -> "FileCatalog":
@@ -123,7 +154,10 @@ class FileCatalog():
             i = j + 2
             c += 1
         return cls(
-            files = {file_names[i]: File.from_json(files[i], mode="host") for i in range(len(files))}
+            files={
+                file_names[i]: File.from_json(files[i], mode="host")
+                for i in range(len(files))
+            }
         )
 
     def save(self, *, path: str) -> None:
@@ -135,8 +169,9 @@ class FileCatalog():
         with open(path, mode="r", encoding="utf-8") as fp:
             return cls.from_json(fp.read())
 
+
 @dataclass
-class FilePeers():
+class FilePeers:
     info: dict[int, Address]
 
     def __getitem__(self, block: int) -> Address:
@@ -148,11 +183,14 @@ class FilePeers():
         for node in file.nodes.values():
             for block in node.blocks:
                 if block not in file_peers.info:
-                    file_peers.info[block] = Address(host=dns_host_to_address(node.host), port=node.port)
+                    file_peers.info[block] = Address(
+                        host=dns_host_to_address(node.host), port=node.port
+                    )
         return file_peers
 
+
 @dataclass
-class PacketInfo():
+class PacketInfo:
     file_name: FileName
     block_id: BlockId
     packet_id: PacketId = 0
@@ -168,7 +206,7 @@ class PacketInfo():
         )
 
 
-class SentPacket():
+class SentPacket:
     packet_id: PacketId
     data: bytes
     sent_at: datetime
@@ -195,8 +233,9 @@ class SentPacket():
     def update(self) -> None:
         self.sent_at = datetime.now()
 
+
 @dataclass
-class SentBlock():
+class SentBlock:
     block_id: BlockId
     packets: dict[PacketId, SentPacket]
 
@@ -209,8 +248,9 @@ class SentBlock():
             self.packets.pop(packet_id)
         return self
 
+
 @dataclass
-class SentFile():
+class SentFile:
     file_name: FileName
     blocks: dict[BlockId, SentBlock]
 
@@ -225,8 +265,9 @@ class SentFile():
             self.blocks.pop(block_id)
         return self
 
+
 @dataclass
-class SentClient():
+class SentClient:
     client_address: Address
     files: dict[FileName, SentFile]
 
@@ -243,8 +284,9 @@ class SentClient():
             self.files.pop(packet_info.file_name)
         return self
 
+
 @dataclass
-class SentCatalog():
+class SentCatalog:
     clients: dict[Address, SentClient]
 
     def add_file(self, *, client: Address, file: SentFile) -> "SentCatalog":
@@ -284,7 +326,6 @@ class SentCatalog():
             return None
 
 
-
 def int_to_bytes(number: int, length: int = 4) -> bytes:
     return number.to_bytes(length, byteorder="little")
 
@@ -309,6 +350,7 @@ def is_socket_alive(s: socket.socket) -> bool:
 
 def dns_host_to_address(host: str) -> str:
     return socket.gethostbyname(host)
+
 
 def address_to_dns_host(address: str) -> str:
     return socket.gethostbyaddr(address)[0]

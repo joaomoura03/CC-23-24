@@ -1,11 +1,11 @@
 import os
 import socket
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 from time import sleep
 from typing import Optional
-import traceback
 
 from utils import (
     Address,
@@ -89,8 +89,8 @@ class Node:
                     packet.update()
 
     def udp_packet_retry(self):
-        print("FR A verificar pacotes...")
         try:
+            print("A verificar pacotes...")
             while self.running:
                 sleep(5)
                 with self.packet_guard:
