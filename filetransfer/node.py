@@ -93,6 +93,7 @@ class Node:
             print("A verificar pacotes...")
             while self.running:
                 sleep(5)
+                print("FR", self.sent_packets)
                 with self.packet_guard:
                     for client in self.sent_packets.clients.values():
                         self.udp_packet_retry_one_client(client=client)
@@ -223,6 +224,7 @@ class Node:
             client_socket.sendto(message, address.get())
             file_path = self.storage_path / f"{block}_{file_name}"
             with open(file_path, mode="wb") as fp:
+                expected_packet = 0
                 while True:
                     data, address = client_socket.recvfrom(UDP_BUFFER_SIZE)
                     if not data:
@@ -234,8 +236,18 @@ class Node:
                         packet_id=packet.packet_id,
                     )
                     ack = b"2" + packet_info.to_bytes()
-                    client_socket.sendto(ack, address)
-                    fp.write(packet.data)
+                    def fail_packet() -> bool:
+                        import random
+
+                        if random.random() < 0.1:
+                            return True
+                        return False
+
+                    if not fail_packet():
+                        client_socket.sendto(ack, address)
+                    if packet and packet.packet_id == expected_packet:
+                        fp.write(packet.data)
+                        expected_packet += 1
         except Exception as e:
             import os
             import traceback

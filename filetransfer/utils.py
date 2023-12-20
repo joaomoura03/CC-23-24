@@ -308,8 +308,8 @@ class SentCatalog:
     ) -> "SentCatalog":
         if client in self.clients:
             self.clients[client].remove_packet(packet_info=packet_info)
-        if not self.clients[client].files:
-            self.clients.pop(client)
+            if not self.clients[client].files:
+                self.clients.pop(client)
         return self
 
     def get_next_packet(
